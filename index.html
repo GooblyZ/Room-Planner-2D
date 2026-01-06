@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>2D Room Planner</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
 
@@ -344,6 +345,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script>
     const canvas = document.getElementById("roomCanvas");
+    // Prevent default browser touch gestures on the canvas and use Pointer Events
+    try { canvas.style.touchAction = 'none'; } catch (err) {}
     const ctx = canvas.getContext("2d");
     const canvasScroll = document.getElementById("canvasScroll");
 
@@ -496,6 +499,7 @@
     let selectedId = null;
     let isDraggingItem = false;
     let dragOffsetX = 0;
+    let dragStarted = false;
     let dragOffsetY = 0;
 
     let isPanningView = false;
@@ -515,6 +519,8 @@
     let drawStartRoomY = 0;
     let currentDrawRect = null;
     let liveSizeLabel = null;   // תווית מידות חיה בזמן גרירה/ציור
+    let liveDistanceLabel = null; // תווית מרחקים חיה (L/R/T/B)
+    let livePreviewRect = null; // {x,y,w,h,blocked}
 
     // History
     let history = [];
@@ -523,6 +529,13 @@
 
     function deepCopy(obj) {
       return JSON.parse(JSON.stringify(obj));
+    }
+
+    // Snap a pixel value to the room grid (grid in pixels = room.cellSizeCm / room.cmPerPixel)
+    function snapToGridPx(valuePx) {
+      const cellPx = room.cellSizeCm / room.cmPerPixel;
+      if (!cellPx || cellPx <= 0) return valuePx;
+      return Math.round(valuePx / cellPx) * cellPx;
     }
 
     function captureState() {
@@ -1296,6 +1309,19 @@
       ctx.fillStyle = "#f0f7ff";
       ctx.strokeStyle = "#b0c4de";
       ctx.lineWidth = 1;
+      // draw distance label if present
+      if (liveDistanceLabel) {
+        const dText = liveDistanceLabel.text;
+        const dxScreen = panX + liveDistanceLabel.x * zoom;
+        const dyScreen = panY + liveDistanceLabel.y * zoom;
+        const dMetrics = ctx.measureText(dText);
+        const dBoxWidth = dMetrics.width + padding * 2;
+        const dBoxHeight = fontSize + padding * 2;
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
+        ctx.fillRect(dxScreen - dBoxWidth / 2, dyScreen - dBoxHeight, dBoxWidth, dBoxHeight);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(dText, dxScreen - dMetrics.width / 2, dyScreen - padding);
+      }
 
       ctx.font = "11px Arial";
       ctx.fillStyle = "#333";
@@ -1665,6 +1691,24 @@
       });
     }
 
+    // Draw live preview rectangle (during drag) on top of furniture but below selection
+    function drawLivePreview() {
+      if (!livePreviewRect) return;
+      ctx.save();
+      ctx.setLineDash([4,4]);
+      ctx.lineWidth = 2 / zoom;
+      if (livePreviewRect.blocked) {
+        ctx.strokeStyle = 'rgba(220,40,40,0.95)';
+        ctx.fillStyle = 'rgba(220,40,40,0.12)';
+      } else {
+        ctx.strokeStyle = 'rgba(0,123,255,0.95)';
+        ctx.fillStyle = 'rgba(0,123,255,0.08)';
+      }
+      ctx.fillRect(livePreviewRect.x, livePreviewRect.y, livePreviewRect.w, livePreviewRect.h);
+      ctx.strokeRect(livePreviewRect.x, livePreviewRect.y, livePreviewRect.w, livePreviewRect.h);
+      ctx.restore();
+    }
+
     function drawSelectionRectangle() {
       if (!isDrawingItem || !currentDrawRect) return;
 
@@ -1744,6 +1788,7 @@
       drawGrid();
       drawRoomSegments();     // חדש - מתחת לגריד, לפני רהיטים
       drawFurniture();
+      drawLivePreview();
       drawSelectionRectangle();
       drawLegendAndDimensions();
 
@@ -1924,6 +1969,7 @@
         pushHistory();
         selectedId = item.id;
         isDraggingItem = true;
+        dragStarted = true;
         isPanningView = false;
         dragOffsetX = xRoom - item.x;
         dragOffsetY = yRoom - item.y;
@@ -1942,6 +1988,8 @@
         panStartOffsetY = panY;
         canvasScroll.classList.add("grabbing");
       }
+      // Capture pointer to continue receiving pointer events during drag (when supported)
+      try { if (e.pointerId != null) canvas.setPointerCapture(e.pointerId); } catch (err) {}
     }
 
     function yScreenRelative(e) {
@@ -1963,12 +2011,16 @@
           y2 = Math.max(0, Math.min(y2, size.h));
         }
 
-        const x1 = drawStartRoomX;
-        const y1 = drawStartRoomY;
-        const rectX = Math.min(x1, x2);
-        const rectY = Math.min(y1, y2);
-        const rectW = Math.abs(x2 - x1);
-        const rectH = Math.abs(y2 - y1);
+        // Snap drawing coordinates to grid
+        const cellPx = room.cellSizeCm / room.cmPerPixel;
+        const x1 = snapToGridPx(drawStartRoomX);
+        const y1 = snapToGridPx(drawStartRoomY);
+        const x2s = snapToGridPx(x2);
+        const y2s = snapToGridPx(y2);
+        const rectX = Math.min(x1, x2s);
+        const rectY = Math.min(y1, y2s);
+        const rectW = Math.abs(x2s - x1);
+        const rectH = Math.abs(y2s - y1);
 
         currentDrawRect = { x: rectX, y: rectY, w: rectW, h: rectH };
         draw();
@@ -1985,6 +2037,13 @@
           let newX = xRoom - dragOffsetX;
           let newY = yRoom - dragOffsetY;
 
+          // Snap movement to grid (except doors/windows which snap to wall)
+          const cellPx = room.cellSizeCm / room.cmPerPixel;
+          if (!item.isDoor && !item.isWindow) {
+            newX = snapToGridPx(newX);
+            newY = snapToGridPx(newY);
+          }
+
           // דלתות וחלונות - תמיד snap לקיר
           if (item.isDoor || item.isWindow) {
             item.x = newX;
@@ -2000,12 +2059,35 @@
             newX = Math.max(0, Math.min(newX, size.w - item.widthPx));
             newY = Math.max(0, Math.min(newY, size.h - item.heightPx));
 
-            if (
-              !collidesWithOthers(item, newX, newY) &&
-              rectFullyInsideRoom(newX, newY, item.widthPx, item.heightPx)
-            ) {
+            // Try full move first
+            const moveAllowed = !collidesWithOthers(item, newX, newY) && rectFullyInsideRoom(newX, newY, item.widthPx, item.heightPx);
+            if (moveAllowed) {
               item.x = newX;
               item.y = newY;
+              livePreviewRect = { x: item.x, y: item.y, w: item.widthPx, h: item.heightPx, blocked: false };
+            } else {
+              // Sliding behavior: try X-only then Y-only
+              const tryX = {
+                x: newX,
+                y: item.y
+              };
+              const tryY = {
+                x: item.x,
+                y: newY
+              };
+              const canX = !collidesWithOthers(item, tryX.x, tryX.y) && rectFullyInsideRoom(tryX.x, tryX.y, item.widthPx, item.heightPx);
+              const canY = !collidesWithOthers(item, tryY.x, tryY.y) && rectFullyInsideRoom(tryY.x, tryY.y, item.widthPx, item.heightPx);
+              if (canX && !canY) {
+                item.x = tryX.x;
+              } else if (!canX && canY) {
+                item.y = tryY.y;
+              } else if (canX && canY) {
+                // choose the axis with the larger movement magnitude
+                const dx = Math.abs(newX - item.x);
+                const dy = Math.abs(newY - item.y);
+                if (dx >= dy) item.x = tryX.x; else item.y = tryY.y;
+              } // otherwise blocked, do not move
+              livePreviewRect = { x: tryX.x, y: tryY.y, w: item.widthPx, h: item.heightPx, blocked: !(canX||canY) };
             }
           }
 
@@ -2019,6 +2101,26 @@
             x: item.x + item.widthPx / 2,
             y: item.y, // מעל האייטם
             text: `${totalWidthCm.toFixed(0)}×${totalHeightCm.toFixed(0)} cm`
+          };
+
+          // Distance to room bounds (L/R/T/B) in cm
+          const leftCm = (item.x) * room.cmPerPixel;
+          const rightCm = (size.w - (item.x + item.widthPx)) * room.cmPerPixel;
+          const topCm = (item.y) * room.cmPerPixel;
+          const bottomCm = (size.h - (item.y + item.heightPx)) * room.cmPerPixel;
+          // nearest obstacle distance (other furniture)
+          let nearestPx = Infinity;
+          for (const other of furniture) {
+            if (other.id === item.id) continue;
+            const d = distanceBetweenBounding(item, other);
+            if (d < nearestPx) nearestPx = d;
+          }
+          const nearestCm = isFinite(nearestPx) ? nearestPx * room.cmPerPixel : null;
+
+          liveDistanceLabel = {
+            x: item.x + item.widthPx / 2,
+            y: item.y + item.heightPx + 6,
+            text: `L:${leftCm.toFixed(1)}cm R:${rightCm.toFixed(1)}cm T:${topCm.toFixed(1)}cm B:${bottomCm.toFixed(1)}cm${nearestCm!=null?(' N:'+nearestCm.toFixed(1)+'cm'):''}`
           };
 
           draw();
@@ -2045,6 +2147,7 @@
         liveSizeLabel = null;
 
         if (!rect || rect.w < 5 || rect.h < 5) {
+          liveDistanceLabel = null;
           draw();
           return;
         }
@@ -2101,6 +2204,7 @@
         // עדכון המידות הכלליות לפי כל הסגמנטים
         updateRoomSizeFromSegments();
         resizeCanvasToRoom();
+        liveDistanceLabel = null;
         draw();
         updateInfoLabels();
         return;
@@ -2118,6 +2222,12 @@
           draw();
           return;
         }
+
+        // Snap rect to grid before finalizing
+        rect.x = snapToGridPx(rect.x);
+        rect.y = snapToGridPx(rect.y);
+        rect.w = Math.max(1, snapToGridPx(rect.w));
+        rect.h = Math.max(1, snapToGridPx(rect.h));
 
         const widthCm = rect.w * room.cmPerPixel;
         const heightCm = rect.h * room.cmPerPixel;
@@ -2171,17 +2281,26 @@
         furniture.push(item);
         selectedId = item.id;
         refreshSelectionUI();
+        liveDistanceLabel = null;
         draw();
         return;
       }
 
       // 3. שחרור רגיל - גרירה / פאן
+      // If a drag was started, record final snapshot
+      if (dragStarted) {
+        pushHistory();
+        dragStarted = false;
+      }
       isDraggingItem = false;
+      try { if (e.pointerId != null) canvas.releasePointerCapture(e.pointerId); } catch (err) {}
       if (isPanningView) {
         isPanningView = false;
         canvasScroll.classList.remove("grabbing");
       }
       liveSizeLabel = null;
+      liveDistanceLabel = null;
+      livePreviewRect = null;
       draw();
     }
 
@@ -2914,6 +3033,11 @@
 
 
 
+    // Pointer Events for unified mouse/touch handling
+    canvas.addEventListener("pointerdown", onMouseDown);
+    window.addEventListener("pointermove", onMouseMove);
+    window.addEventListener("pointerup", onMouseUp);
+    // Keep mouse listeners for older environments where Pointer Events are unavailable
     canvas.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
