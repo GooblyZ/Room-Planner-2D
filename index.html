@@ -151,6 +151,27 @@
     background: #eef5ff; border: 1px solid #c9ddff; font-size: 11px;
   }
   .mode-active { background: #0056b3; color: #ffffff; border-color: #0056b3; }
+  
+  .buy-coffee-btn {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: #ffdd00;
+  color: #000;
+  padding: 12px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.buy-coffee-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
+}
+
 </style>
 
 </head>
@@ -2943,5 +2964,14 @@
     });
 
   </script>
+    <a
+  href="https://www.buymeacoffee.com/Jkimd"
+  target="_blank"
+  rel="noopener"
+  class="buy-coffee-btn"
+>
+  ☕ Buy me a coffee
+</a>
+
 </body>
 </html>
