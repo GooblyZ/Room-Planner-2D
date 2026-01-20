@@ -17,4 +17,4 @@ For maintainability and credibility, the original single-file prototype was spli
 - The Vercel Analytics snippets are included but optional. If you deploy on GitHub Pages, you can remove them safely.
 
 ## License
-All rights reserved (Jkimd's personal project).
+All rights reserved (personal project).

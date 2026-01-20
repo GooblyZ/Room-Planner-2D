@@ -195,6 +195,13 @@
         <div id="watermark-top">By Jkimd</div>
         <div id="watermark-bottom">© Jkimd - All rights reserved</div>
         <canvas id="roomCanvas" width="1400" height="900"></canvas>
+        <!-- Mobile control buttons for undo/redo and zoom. Hidden by default and displayed only on small screens via media query -->
+        <div class="mobile-controls" id="mobileControls">
+          <button id="mobileUndo" type="button" aria-label="Undo">&#x2190;</button>
+          <button id="mobileRedo" type="button" aria-label="Redo">&#x2192;</button>
+          <button id="mobileZoomIn" type="button" aria-label="Zoom in">+</button>
+          <button id="mobileZoomOut" type="button" aria-label="Zoom out">&#x2212;</button>
+        </div>
       </div>
 
       <div class="info-bar">

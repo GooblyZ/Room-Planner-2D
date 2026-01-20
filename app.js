@@ -38,6 +38,17 @@
     const exportPngBtn = document.getElementById("exportPngBtn");
     const exportPdfBtn = document.getElementById("exportPdfBtn");
 
+    // Mobile-specific buttons for undo/redo and zoom controls. These will
+    // exist only on small screens (see index.html). Attach handlers if present.
+    const mobileUndoBtn = document.getElementById('mobileUndo');
+    const mobileRedoBtn = document.getElementById('mobileRedo');
+    const mobileZoomInBtn = document.getElementById('mobileZoomIn');
+    const mobileZoomOutBtn = document.getElementById('mobileZoomOut');
+    if (mobileUndoBtn) mobileUndoBtn.addEventListener('click', () => undoLast());
+    if (mobileRedoBtn) mobileRedoBtn.addEventListener('click', () => redoLast());
+    if (mobileZoomInBtn) mobileZoomInBtn.addEventListener('click', () => zoomIn());
+    if (mobileZoomOutBtn) mobileZoomOutBtn.addEventListener('click', () => zoomOut());
+
     // -----------------------------------------------------------------------------
     // Predefined furniture items.
     //
@@ -97,6 +108,7 @@
 
     const scaleInfo = document.getElementById("scaleInfo");
     const roomInfo = document.getElementById("roomInfo");
+    const hintInfo = document.getElementById("hintInfo");
 
     const overlapModeBtn = document.getElementById("toggleOverlapMode");
     const roomDesignModeBtn = document.getElementById("toggleRoomDesignMode");
@@ -436,6 +448,21 @@ let unit = 'cm';
       }
     })();
 
+    // Dynamically update the hint text based on screen size. On small screens
+    // we encourage using the mobile controls and multi-touch gestures. On
+    // larger screens we show the default hint for mouse and keyboard.
+    function updateHint() {
+      if (!hintInfo) return;
+      if (window.innerWidth <= 700) {
+        hintInfo.textContent = 'Hint: use +/– buttons to zoom, undo/redo with arrows or two/three-finger taps, drag empty space to pan.';
+      } else {
+        hintInfo.textContent = 'Hint: wheel to zoom, drag empty space to move, draw rectangles to create items.';
+      }
+    }
+    window.addEventListener('resize', updateHint);
+    // call once to initialize the hint
+    updateHint();
+
     // History
     let history = [];
     let historyIndex = -1;
@@ -529,6 +556,13 @@ let unit = 'cm';
     function updateUndoRedoUI() {
       undoBtn.disabled = historyIndex <= 0;
       redoBtn.disabled = historyIndex >= history.length - 1 || history.length === 0;
+      // Also update mobile undo/redo buttons if they exist
+      if (typeof mobileUndoBtn !== 'undefined' && mobileUndoBtn) {
+        mobileUndoBtn.disabled = historyIndex <= 0;
+      }
+      if (typeof mobileRedoBtn !== 'undefined' && mobileRedoBtn) {
+        mobileRedoBtn.disabled = historyIndex >= history.length - 1 || history.length === 0;
+      }
     }
 
     function undoLast() {
@@ -541,6 +575,24 @@ let unit = 'cm';
       if (historyIndex < history.length - 1) {
         restoreSnapshot(historyIndex + 1);
       }
+    }
+
+    // Zoom in by increasing the zoom factor. Clamp to prevent excessive zooming.
+    function zoomIn() {
+      const factor = 1.1;
+      zoom = Math.min(5, zoom * factor);
+      resizeCanvasToRoom();
+      draw();
+      updateInfoLabels();
+    }
+
+    // Zoom out by decreasing the zoom factor. Clamp to prevent zooming out too far.
+    function zoomOut() {
+      const factor = 1.1;
+      zoom = Math.max(0.2, zoom / factor);
+      resizeCanvasToRoom();
+      draw();
+      updateInfoLabels();
     }
 
     function ensureSegments(item) {
@@ -3718,9 +3770,24 @@ let unit = 'cm';
 
     try {
       canvas.addEventListener('touchstart', touchToPointerHandler(onMouseDown), { passive: false });
-      window.addEventListener('touchmove', touchToPointerHandler(onMouseMove), { passive: false });
-      window.addEventListener('touchend', touchToPointerHandler(onMouseUp), { passive: false });
-      window.addEventListener('touchcancel', touchToPointerHandler(onMouseUp), { passive: false });
+      canvas.addEventListener('touchmove', touchToPointerHandler(onMouseMove), { passive: false });
+      canvas.addEventListener('touchend', touchToPointerHandler(onMouseUp), { passive: false });
+      canvas.addEventListener('touchcancel', touchToPointerHandler(onMouseUp), { passive: false });
+      // Detect multi-finger taps for undo/redo on mobile. A quick two-finger tap triggers undo
+      // and a three-finger tap triggers redo. Ignore these gestures when dragging, panning or drawing.
+      canvas.addEventListener('touchstart', function(ev) {
+        try {
+          if (isDraggingItem || isPanningView || isDrawingItem || roomDesignMode || polygonDrawMode) return;
+          const num = ev.touches ? ev.touches.length : 0;
+          if (num === 2) {
+            undoLast();
+          } else if (num === 3) {
+            redoLast();
+          }
+        } catch (err) {
+          // ignore
+        }
+      }, { passive: true });
     } catch (err) {
       // ignore if browser denies non-passive handlers
     }

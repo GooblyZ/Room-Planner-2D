@@ -125,10 +125,18 @@
     padding: 10px; gap: 8px;
   }
   .canvas-scroll {
-    flex: 1; width: 100%; max-width: 1200px; max-height: 750px;
-    border: 1px solid #ccc; background: #e9e9e9;
-    display: flex; align-items: center; justify-content: center;
-    overflow: hidden; cursor: grab;
+    flex: 1;
+    width: 100%;
+    max-width: 1200px;
+    max-height: 750px;
+    border: 1px solid #ccc;
+    background: #e9e9e9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: grab;
+    position: relative;
     touch-action: none; /* prevent default touch gestures and enable pointer handling */
   }
   .canvas-scroll.grabbing { cursor: grabbing; }
@@ -145,6 +153,73 @@
     background: #eef5ff; border: 1px solid #c9ddff; font-size: 11px;
   }
   .mode-active { background: #0056b3; color: #ffffff; border-color: #0056b3; }
+
+  /* Mobile control buttons for undo/redo and zoom. Hidden by default and displayed
+     only on small screens via media query. Positioned over the canvas in the bottom
+     right corner. */
+  .mobile-controls {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 4000;
+  }
+  .mobile-controls button {
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    background: #007bff;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    cursor: pointer;
+  }
+  .mobile-controls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Responsive layout for mobile devices */
+  @media (max-width: 700px) {
+    .app {
+      flex-direction: column;
+      height: auto;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 100%;
+      max-width: 100%;
+      max-height: 45vh;
+      border-right: none;
+      border-bottom: 1px solid #ddd;
+      overflow-y: auto;
+    }
+    .canvas-wrapper {
+      flex: none;
+      width: 100%;
+    }
+    .canvas-scroll {
+      width: 100%;
+      max-width: 100%;
+      max-height: none;
+      height: 50vh;
+    }
+    .info-bar {
+      max-width: 100%;
+    }
+    /* show the mobile controls on narrow screens */
+    .mobile-controls {
+      display: flex;
+    }
+    /* hide the Buy me a coffee button on small screens */
+    .buy-coffee-btn {
+      display: none;
+    }
+  }
   
   .buy-coffee-btn {
   position: fixed;
